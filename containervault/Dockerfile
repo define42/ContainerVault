@@ -9,7 +9,7 @@ ENV CGO_ENABLED=0 \
     GOARCH=amd64
 
 # Copy module files first (better caching)
-COPY go.mod  ./
+COPY go.mod go.sum  ./
 RUN go mod download
 
 # Copy source

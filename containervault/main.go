@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -16,13 +17,15 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/go-ldap/ldap/v3"
 )
 
 var (
 	upstream = mustParse("http://registry:5000")
+	ldapCfg  = loadLDAPConfig()
 )
 
-// Simple user model (replace with LDAP later)
 type User struct {
 	Name          string
 	Namespace     string
@@ -30,9 +33,15 @@ type User struct {
 	DeleteAllowed bool
 }
 
-var users = map[string]User{
-	"alice": {Name: "alice", Namespace: "team1", PullOnly: false, DeleteAllowed: true},
-	"bob":   {Name: "bob", Namespace: "team2", PullOnly: true, DeleteAllowed: false},
+type LDAPConfig struct {
+	URL             string
+	BaseDN          string
+	UserFilter      string
+	GroupAttribute  string
+	GroupNamePrefix string
+	UserMailDomain  string
+	StartTLS        bool
+	SkipTLSVerify   bool
 }
 
 func main() {
@@ -86,21 +95,23 @@ func main() {
 
 func authenticate(w http.ResponseWriter, r *http.Request) (*User, bool) {
 	fmt.Println(r.Header)
-	user, pass, ok := r.BasicAuth()
-	if !ok || pass == "" {
+	username, password, ok := r.BasicAuth()
+	fmt.Println("sssssssssssssssss:", username)
+	if !ok || password == "" {
 		fmt.Println("write header WWW-Authenticate")
 		w.Header().Set("WWW-Authenticate", `Basic realm="Registry"`)
 		http.Error(w, "auth required", http.StatusUnauthorized)
 		return nil, false
 	}
 
-	u, exists := users[user]
-	if !exists {
-		http.Error(w, "invalid user", http.StatusUnauthorized)
+	u, err := ldapAuthenticate(username, password)
+	if err != nil {
+		log.Printf("ldap auth failed for %s: %v", username, err)
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return nil, false
 	}
 
-	return &u, true
+	return u, true
 }
 
 func authorize(u *User, r *http.Request) bool {
@@ -199,6 +210,247 @@ func generateSelfSigned(certPath, keyPath string) error {
 	return nil
 }
 
+func loadLDAPConfig() LDAPConfig {
+	return LDAPConfig{
+		URL:             getEnv("LDAP_URL", "ldaps://ldap:389"),
+		BaseDN:          getEnv("LDAP_BASE_DN", "dc=glauth,dc=com"),
+		UserFilter:      getEnv("LDAP_USER_FILTER", "(uid=%s)"),
+		GroupAttribute:  getEnv("LDAP_GROUP_ATTRIBUTE", "memberOf"),
+		GroupNamePrefix: getEnv("LDAP_GROUP_PREFIX", "team"),
+		UserMailDomain:  getEnv("LDAP_USER_DOMAIN", "@example.com"),
+		StartTLS:        getEnvBool("LDAP_STARTTLS", false),
+		SkipTLSVerify:   getEnvBool("LDAP_SKIP_TLS_VERIFY", true),
+	}
+}
+
+func ldapAuthenticate(username, password string) (*User, error) {
+	conn, err := dialLDAP(ldapCfg)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	mail := username
+	if !strings.Contains(username, "@") && ldapCfg.UserMailDomain != "" {
+		domain := ldapCfg.UserMailDomain
+		if !strings.HasPrefix(domain, "@") {
+			domain = "@" + domain
+		}
+		mail = username + domain
+	}
+
+	fmt.Println("my email", mail)
+
+	// Bind as the user using only the mail/UPN form.
+	bindIDs := []string{mail}
+
+	var bindErr error
+	for _, id := range bindIDs {
+		if id == "" {
+			continue
+		}
+		if err := conn.Bind(id, password); err == nil {
+			bindErr = nil
+			break
+		} else {
+			bindErr = err
+		}
+	}
+	if bindErr != nil {
+		return nil, fmt.Errorf("ldap bind failed: %w", bindErr)
+	}
+	fmt.Println("Bind gik godt for ", mail)
+	/*
+			userDN := ""
+			if res, err := conn.WhoAmI(nil); err == nil {
+				if dn := extractDN(res.AuthzID); dn != "" {
+					userDN = dn
+				}
+			}
+			fmt.Println("aaaaaaaaaaaaaaawho am i:", userDN)
+
+		var entry *ldap.Entry
+		if userDN != "" {
+			entry, err = fetchEntry(conn, userDN, ldapCfg.GroupAttribute)
+		}*/
+
+	filter := fmt.Sprintf(ldapCfg.UserFilter, username)
+	fmt.Println("filter", filter)
+	searchReq := ldap.NewSearchRequest(
+		ldapCfg.BaseDN,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases, 1, 0, false,
+		filter,
+		nil,
+		nil,
+	)
+
+	sr, err := conn.Search(searchReq)
+	if err != nil {
+		fmt.Println("what", err)
+		return nil, fmt.Errorf("ldap search: %w", err)
+	}
+	if len(sr.Entries) == 0 {
+		return nil, fmt.Errorf("user %s not found", mail)
+	}
+	fmt.Println("############################", sr.Entries, len(sr.Entries))
+
+	for _, e := range sr.Entries {
+		fmt.Println("Entry DN:", e.DN)
+		fmt.Println(GetUserGroups(conn, e.DN, ldapCfg.BaseDN))
+		for _, attr := range e.Attributes {
+			fmt.Printf("  %s: %v\n", attr.Name, attr.Values)
+		}
+	}
+
+	entry := sr.Entries[0]
+
+	groups := entry.GetAttributeValues(ldapCfg.GroupAttribute)
+	fmt.Println("Groups for", username, ":", groups)
+	user := userFromGroups(username, groups, ldapCfg.GroupNamePrefix)
+	if user == nil {
+		return nil, fmt.Errorf("no authorized groups for %s", username)
+	}
+
+	return user, nil
+}
+
+func fetchEntry(conn *ldap.Conn, dn string, groupAttr string) (*ldap.Entry, error) {
+	req := ldap.NewSearchRequest(
+		dn,
+		ldap.ScopeBaseObject, ldap.NeverDerefAliases, 1, 0, false,
+		"(objectClass=*)",
+		[]string{"dn", groupAttr},
+		nil,
+	)
+	res, err := conn.Search(req)
+	if err != nil || len(res.Entries) == 0 {
+		return nil, err
+	}
+	return res.Entries[0], nil
+}
+
+func extractDN(authzID string) string {
+	authzID = strings.TrimSpace(authzID)
+	if strings.HasPrefix(strings.ToLower(authzID), "dn:") {
+		return strings.TrimSpace(authzID[3:])
+	}
+	if strings.Contains(authzID, "=") && strings.Contains(authzID, ",") {
+		return authzID
+	}
+	return ""
+}
+
+func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {
+	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}))
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.StartTLS && strings.HasPrefix(cfg.URL, "ldap://") {
+		if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	}
+
+	return conn, nil
+}
+
+func userFromGroups(username string, groups []string, prefix string) *User {
+	var selected *User
+
+	for _, g := range groups {
+		groupName := groupNameFromDN(g)
+		fmt.Println("groupName", groupName, prefix)
+		if prefix != "" && !strings.HasPrefix(groupName, prefix) {
+			continue
+		}
+		fmt.Println("A")
+
+		ns, pullOnly, deleteAllowed, ok := permissionsFromGroup(groupName)
+		if !ok {
+			continue
+		}
+		fmt.Println("B")
+
+		candidate := &User{
+			Name:          username,
+			Namespace:     ns,
+			PullOnly:      pullOnly,
+			DeleteAllowed: deleteAllowed,
+		}
+
+		if selected == nil || morePermissive(candidate, selected) {
+			selected = candidate
+		}
+		fmt.Println("C")
+	}
+
+	return selected
+}
+
+func groupNameFromDN(dn string) string {
+	parts := strings.SplitN(dn, ",", 2)
+	if len(parts) == 0 {
+		return dn
+	}
+
+	first := strings.TrimSpace(parts[0])
+	firstLower := strings.ToLower(first)
+
+	switch {
+	case strings.HasPrefix(firstLower, "cn="):
+		return first[3:]
+	case strings.HasPrefix(firstLower, "ou="):
+		return first[3:]
+	default:
+		return dn
+	}
+}
+
+func permissionsFromGroup(group string) (namespace string, pullOnly bool, deleteAllowed bool, ok bool) {
+	switch {
+	case strings.HasSuffix(group, "_read_write_delete"):
+		ns := strings.TrimSuffix(group, "_read_write_delete")
+		return ns, false, true, true
+	case strings.HasSuffix(group, "_read_write"):
+		ns := strings.TrimSuffix(group, "_read_write")
+		return ns, false, false, true
+	case strings.HasSuffix(group, "_read_only"):
+		ns := strings.TrimSuffix(group, "_read_only")
+		return ns, true, false, true
+	default:
+		// Bare group name defaults to read/write without delete
+		return group, false, false, true
+	}
+}
+
+func morePermissive(a, b *User) bool {
+	if a.DeleteAllowed != b.DeleteAllowed {
+		return a.DeleteAllowed
+	}
+	if a.PullOnly != b.PullOnly {
+		return !a.PullOnly
+	}
+	return false
+}
+
+func getEnv(key, def string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return def
+}
+
+func getEnvBool(key string, def bool) bool {
+	if v, ok := os.LookupEnv(key); ok {
+		v = strings.ToLower(strings.TrimSpace(v))
+		return v == "1" || v == "true" || v == "yes"
+	}
+	return def
+}
+
 func serveLanding(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, landingHTML)
@@ -230,3 +482,76 @@ const landingHTML = `<!doctype html>
 </body>
 </html>
 `
+
+func GetUserGroups(
+	l *ldap.Conn,
+	userDN string,
+	baseDN string,
+
+) ([]string, error) {
+
+	//userDN := fmt.Sprintf("cn=%s,%s", username, baseDN)
+
+	filter := fmt.Sprintf("(member=%s)", ldap.EscapeFilter(userDN))
+
+	req := ldap.NewSearchRequest(
+		baseDN,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases,
+		0,
+		0,
+		false,
+		filter,
+		[]string{"cn"},
+		nil,
+	)
+
+	res, err := l.Search(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var groups []string
+	for _, entry := range res.Entries {
+		groups = append(groups, entry.GetAttributeValue("cn"))
+	}
+
+	return groups, nil
+}
+
+func FindUserDN(
+	l *ldap.Conn,
+	baseDN string,
+	login string,
+) (string, error) {
+
+	filter := fmt.Sprintf(
+		"(|(uid=%s)(cn=%s)(mail=%s))",
+		ldap.EscapeFilter(login),
+		ldap.EscapeFilter(login),
+		ldap.EscapeFilter(login),
+	)
+
+	req := ldap.NewSearchRequest(
+		baseDN,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases,
+		1,
+		0,
+		false,
+		filter,
+		[]string{}, // DN only
+		nil,
+	)
+
+	res, err := l.Search(req)
+	if err != nil {
+		return "", err
+	}
+
+	if len(res.Entries) != 1 {
+		return "", fmt.Errorf("user not found or ambiguous")
+	}
+
+	return res.Entries[0].DN, nil
+}

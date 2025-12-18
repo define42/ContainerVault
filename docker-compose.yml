@@ -16,6 +16,8 @@ services:
     build: ./testldap/
     container_name: ldap
     restart: always
+    ports:
+      - "389:389"
 
   proxy:
     build: ./containervault/
