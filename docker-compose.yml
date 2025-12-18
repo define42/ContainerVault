@@ -10,6 +10,7 @@ services:
     environment:
       REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
       REGISTRY_HTTP_ADDR: :5000
+      REGISTRY_STORAGE_DELETE_ENABLED: true
 
   proxy:
     build: ./

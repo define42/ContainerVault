@@ -24,14 +24,15 @@ var (
 
 // Simple user model (replace with LDAP later)
 type User struct {
-	Name      string
-	Namespace string
-	PullOnly  bool
+	Name          string
+	Namespace     string
+	PullOnly      bool
+	DeleteAllowed bool
 }
 
 var users = map[string]User{
-	"alice": {Name: "alice", Namespace: "team1", PullOnly: false},
-	"bob":   {Name: "bob", Namespace: "team2", PullOnly: true},
+	"alice": {Name: "alice", Namespace: "team1", PullOnly: false, DeleteAllowed: true},
+	"bob":   {Name: "bob", Namespace: "team2", PullOnly: true, DeleteAllowed: false},
 }
 
 func main() {
@@ -118,6 +119,10 @@ func authorize(u *User, r *http.Request) bool {
 		default:
 			return false
 		}
+	}
+
+	if r.Method == http.MethodDelete {
+		return u.DeleteAllowed
 	}
 
 	return true
