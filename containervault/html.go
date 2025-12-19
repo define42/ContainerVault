@@ -101,6 +101,9 @@ const dashboardHTML = `<!doctype html>
     .node { width:100%%; text-align:left; border:1px solid var(--line); background:var(--tree); color:#e2e8f0; padding:8px 10px; border-radius:10px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; }
     .node:hover { border-color:rgba(56,189,248,0.6); }
     .node.active { border-color:var(--accent); box-shadow:0 0 0 1px rgba(56,189,248,0.2) inset; }
+    .node[data-type="namespace"] { background:rgba(56,189,248,0.12); color:#bae6fd; border-color:rgba(56,189,248,0.4); }
+    .node[data-type="namespace"].active { border-color:var(--accent); }
+    .node[data-type="repo"] { background:rgba(15,23,42,0.8); color:#e2e8f0; }
     .caret { width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted); }
     .branch { margin-left:20px; display:flex; flex-direction:column; gap:6px; }
     .leaf { border:1px dashed rgba(148,163,184,0.35); background:rgba(15,23,42,0.6); padding:6px 10px; border-radius:10px; font-size:13px; color:#cbd5e1; }
