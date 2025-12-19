@@ -11,6 +11,7 @@ type TagInfo = {
 type State = {
   expandedNamespace: string | null;
   expandedRepo: string | null;
+  expandedFolders: Record<string, boolean>;
   reposByNamespace: Record<string, string[]>;
   repoLoading: Record<string, boolean>;
   tagsByRepo: Record<string, string[]>;
@@ -34,6 +35,7 @@ type State = {
   const state: State = {
     expandedNamespace: null,
     expandedRepo: null,
+    expandedFolders: {},
     reposByNamespace: {},
     repoLoading: {},
     tagsByRepo: {},
@@ -64,7 +66,7 @@ type State = {
         const repos = state.reposByNamespace[ns] || [];
         const repoLoading = state.repoLoading[ns];
         const repoMarkup = expanded
-          ? '<div class="branch">' + renderRepos(repos, repoLoading) + "</div>"
+          ? '<div class="branch">' + renderRepos(ns, repos, repoLoading) + "</div>"
           : "";
         return (
           '<button class="node' +
@@ -85,33 +87,109 @@ type State = {
       .join("");
   }
 
-  function renderRepos(repos: string[], loading?: boolean): string {
+  function renderRepos(namespace: string, repos: string[], loading?: boolean): string {
     if (loading) {
       return '<div class="leaf mono">Loading repositories...</div>';
     }
     if (!repos || repos.length === 0) {
       return '<div class="leaf mono">No repositories found.</div>';
     }
-    return repos
-      .map((repo) => {
-        const expanded = state.expandedRepo === repo;
+    const tree = buildRepoTree(namespace, repos);
+    return renderFolderNode(namespace, tree);
+  }
+
+  function repoLabel(namespace: string, repo: string): string {
+    return repo.startsWith(namespace + "/") ? repo.slice(namespace.length + 1) : repo;
+  }
+
+  function repoLeafLabel(namespace: string, repo: string): string {
+    const label = repoLabel(namespace, repo);
+    const parts = label.split("/");
+    return parts[parts.length - 1];
+  }
+
+  type RepoTreeNode = {
+    path: string;
+    children: Record<string, RepoTreeNode>;
+    repos: string[];
+  };
+
+  function buildRepoTree(namespace: string, repos: string[]): RepoTreeNode {
+    const root: RepoTreeNode = { path: "", children: {}, repos: [] };
+    repos.forEach((repo) => {
+      const label = repoLabel(namespace, repo);
+      const parts = label.split("/");
+      if (parts.length === 1) {
+        root.repos.push(repo);
+        return;
+      }
+      let current = root;
+      for (let i = 0; i < parts.length - 1; i += 1) {
+        const seg = parts[i];
+        if (!current.children[seg]) {
+          const path = current.path ? current.path + "/" + seg : seg;
+          current.children[seg] = { path, children: {}, repos: [] };
+        }
+        current = current.children[seg];
+      }
+      current.repos.push(repo);
+    });
+    return root;
+  }
+
+  function renderFolderNode(namespace: string, node: RepoTreeNode): string {
+    const repoMarkup = node.repos
+      .slice()
+      .sort()
+      .map((repo) => renderRepoNode(namespace, repo, repoLeafLabel(namespace, repo)))
+      .join("");
+    const folderMarkup = Object.keys(node.children)
+      .sort()
+      .map((folder) => {
+        const child = node.children[folder];
+        const folderKey = namespace + "/" + child.path;
+        const expanded = !!state.expandedFolders[folderKey];
         const caret = expanded ? "&#9662;" : "&#9656;";
+        const children = expanded
+          ? '<div class="branch">' + renderFolderNode(namespace, child) + "</div>"
+          : "";
         return (
-          '<button class="node' +
-          (expanded ? " active" : "") +
-          '" data-type="repo" data-name="' +
-          escapeHTML(repo) +
+          '<button class="node" data-type="folder" data-namespace="' +
+          escapeHTML(namespace) +
+          '" data-folder-path="' +
+          escapeHTML(child.path) +
           '">' +
           '<span class="caret">' +
           caret +
           "</span>" +
           "<span>" +
-          escapeHTML(repo) +
+          escapeHTML(folder) +
           "</span>" +
-          "</button>"
+          "</button>" +
+          children
         );
       })
       .join("");
+    return repoMarkup + folderMarkup;
+  }
+
+  function renderRepoNode(namespace: string, repo: string, label: string): string {
+    const expanded = state.expandedRepo === repo;
+    const caret = expanded ? "&#9662;" : "&#9656;";
+    return (
+      '<button class="node' +
+      (expanded ? " active" : "") +
+      '" data-type="repo" data-name="' +
+      escapeHTML(repo) +
+      '">' +
+      '<span class="caret">' +
+      caret +
+      "</span>" +
+      "<span>" +
+      escapeHTML(label) +
+      "</span>" +
+      "</button>"
+    );
   }
 
   async function loadRepos(namespace: string): Promise<void> {
@@ -255,6 +333,17 @@ type State = {
       return;
     }
     const type = button.getAttribute("data-type");
+    if (type === "folder") {
+      const folder = button.getAttribute("data-folder-path");
+      const namespace = button.getAttribute("data-namespace");
+      if (!folder || !namespace) {
+        return;
+      }
+      const key = namespace + "/" + folder;
+      state.expandedFolders[key] = !state.expandedFolders[key];
+      renderTree();
+      return;
+    }
     const name = button.getAttribute("data-name");
     if (!name) {
       return;
