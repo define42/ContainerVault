@@ -3,11 +3,18 @@ package main
 import (
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 func main() {
+	_ = mime.AddExtensionType(".js", "application/javascript")
+	staticDir := resolveStaticDir()
+
 	// Use single-host reverse proxy to forward traffic to the registry
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -20,6 +27,15 @@ func main() {
 	proxy.FlushInterval = -1 // important for streaming blobs
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			path := strings.TrimPrefix(r.URL.Path, "/static/")
+			if strings.HasSuffix(path, ".js") {
+				w.Header().Set("Content-Type", "application/javascript")
+			}
+			http.ServeFile(w, r, filepath.Join(staticDir, path))
+			return
+		}
+
 		if r.Method == http.MethodGet && r.URL.Path == "/" {
 			serveLanding(w)
 			return
@@ -89,4 +105,15 @@ func main() {
 		keyPath,
 		handler,
 	))
+}
+
+func resolveStaticDir() string {
+	exe, err := os.Executable()
+	if err == nil {
+		dir := filepath.Join(filepath.Dir(exe), "static")
+		if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+			return dir
+		}
+	}
+	return "./static"
 }

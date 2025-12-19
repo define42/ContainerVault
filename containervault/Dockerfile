@@ -14,6 +14,7 @@ RUN go mod download
 
 # Copy source
 COPY *.go ./
+COPY static ./static
 
 # Build
 RUN go build -o registry-proxy
@@ -26,6 +27,7 @@ WORKDIR /app
 
 # Copy binary
 COPY --from=builder /app/registry-proxy /app/registry-proxy
+COPY --from=builder /app/static /app/static
 
 # TLS certs will be mounted
 EXPOSE 8443

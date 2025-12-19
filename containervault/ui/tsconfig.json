@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["DOM", "ES2019"],
+    "module": "ES2020",
+    "rootDir": ".",
+    "outDir": "../static",
+    "strict": true,
+    "noEmitOnError": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["ui.ts"]
+}

@@ -77,14 +77,16 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	namespacesJSON, err := json.Marshal(sess.Namespaces)
+	bootstrapJSON, err := json.Marshal(map[string]any{
+		"namespaces": sess.Namespaces,
+	})
 	if err != nil {
 		http.Error(w, "unable to render dashboard", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, dashboardHTML, html.EscapeString(sess.User.Name), string(namespacesJSON))
+	fmt.Fprintf(w, dashboardHTML, html.EscapeString(sess.User.Name), string(bootstrapJSON))
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {

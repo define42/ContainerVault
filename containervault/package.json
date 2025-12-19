@@ -1,0 +1,10 @@
+{
+  "name": "containervault-ui",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build:ui": "tsc -p ui/tsconfig.json"
+  }
+}
