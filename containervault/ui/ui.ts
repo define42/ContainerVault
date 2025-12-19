@@ -22,6 +22,8 @@ type State = {
   if (!tree || !detail) {
     return;
   }
+  const treeEl = tree;
+  const detailEl = detail;
 
   const bootstrapEl = document.getElementById("cv-bootstrap");
   const bootstrap: BootstrapData = bootstrapEl?.textContent
@@ -52,10 +54,10 @@ type State = {
 
   function renderTree(): void {
     if (!namespaces || namespaces.length === 0) {
-      tree.innerHTML = '<div class="mono">No namespaces assigned.</div>';
+      treeEl.innerHTML = '<div class="mono">No namespaces assigned.</div>';
       return;
     }
-    tree.innerHTML = namespaces
+    treeEl.innerHTML = namespaces
       .map((ns) => {
         const expanded = state.expandedNamespace === ns;
         const caret = expanded ? "&#9662;" : "&#9656;";
@@ -121,14 +123,14 @@ type State = {
       if (!res.ok) {
         state.reposByNamespace[namespace] = [];
         state.repoLoading[namespace] = false;
-        detail.innerHTML = '<div class="mono">' + escapeHTML(text) + "</div>";
+        detailEl.innerHTML = '<div class="mono">' + escapeHTML(text) + "</div>";
         renderTree();
         return;
       }
       const data = JSON.parse(text) as { repositories?: string[] };
       state.reposByNamespace[namespace] = data.repositories || [];
     } catch (err) {
-      detail.innerHTML = '<div class="mono">Unable to load repositories.</div>';
+      detailEl.innerHTML = '<div class="mono">Unable to load repositories.</div>';
     } finally {
       state.repoLoading[namespace] = false;
       renderTree();
@@ -136,26 +138,26 @@ type State = {
   }
 
   async function loadTags(repo: string): Promise<void> {
-    detail.innerHTML = '<div class="mono">Loading tags...</div>';
+    detailEl.innerHTML = '<div class="mono">Loading tags...</div>';
     try {
       const res = await fetch("/api/tags?repo=" + encodeURIComponent(repo));
       const text = await res.text();
       if (!res.ok) {
         state.tagsByRepo[repo] = [];
-        detail.innerHTML = '<div class="mono">' + escapeHTML(text) + "</div>";
+        detailEl.innerHTML = '<div class="mono">' + escapeHTML(text) + "</div>";
         return;
       }
       const data = JSON.parse(text) as { tags?: string[] };
       state.tagsByRepo[repo] = data.tags || [];
       renderDetail(repo, state.tagsByRepo[repo]);
     } catch (err) {
-      detail.innerHTML = '<div class="mono">Unable to load tags.</div>';
+      detailEl.innerHTML = '<div class="mono">Unable to load tags.</div>';
     }
   }
 
   function renderDetail(repo: string, tags: string[]): void {
     if (!repo) {
-      detail.innerHTML = "Select a repository to view tags.";
+      detailEl.innerHTML = "Select a repository to view tags.";
       return;
     }
     const base = window.location.host;
@@ -178,7 +180,7 @@ type State = {
         );
       })
       .join("");
-    detail.innerHTML =
+    detailEl.innerHTML =
       "<div><strong>" +
       escapeHTML(repo) +
       "</strong></div>" +
@@ -222,7 +224,7 @@ type State = {
   }
 
   function updateTagRow(tag: string, data: TagInfo): void {
-    const row = detail.querySelector('[data-tag-row="' + CSS.escape(tag) + '"]');
+    const row = detailEl.querySelector('[data-tag-row="' + CSS.escape(tag) + '"]');
     if (!row) {
       return;
     }
@@ -246,7 +248,7 @@ type State = {
       "</span>";
   }
 
-  tree.addEventListener("click", (event) => {
+  treeEl.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     const button = target?.closest("button.node") as HTMLButtonElement | null;
     if (!button) {

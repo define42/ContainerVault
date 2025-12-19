@@ -8,13 +8,21 @@ ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
 
+# Install node/npm for tsc
+RUN apk add --no-cache nodejs npm
+
 # Copy module files first (better caching)
 COPY go.mod go.sum  ./
 RUN go mod download
 
+# Copy UI build files
+COPY package.json ./
+COPY ui ./ui
+RUN npm install
+RUN npm run build:ui
+
 # Copy source
 COPY *.go ./
-COPY static ./static
 
 # Build
 RUN go build -o registry-proxy
