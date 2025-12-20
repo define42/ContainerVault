@@ -1,4 +1,7 @@
 all:
+	docker compose build
+
+test:
 	docker compose down
 	docker compose build
 	docker compose up -d
