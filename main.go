@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
@@ -33,62 +35,37 @@ func main() {
 
 	proxy.FlushInterval = -1 // important for streaming blobs
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/") {
-			path := strings.TrimPrefix(r.URL.Path, "/static/")
-			if strings.HasSuffix(path, ".js") {
-				w.Header().Set("Content-Type", "application/javascript")
-			}
-			setNoCacheHeaders(w)
-			http.ServeFile(w, r, filepath.Join(staticDir, path))
-			return
-		}
+	apiUnauthorized := func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}
+	apiDashboard := requireSession(serveDashboard, apiUnauthorized)
 
-		if r.Method == http.MethodGet && r.URL.Path == "/" {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
-			return
+	router := mux.NewRouter()
+	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
+	router.PathPrefix("/static/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/static/")
+		if strings.HasSuffix(path, ".js") {
+			w.Header().Set("Content-Type", "application/javascript")
 		}
+		setNoCacheHeaders(w)
+		staticHandler.ServeHTTP(w, r)
+	}))
 
-		if r.URL.Path == "/login" {
-			handleLogin(w, r)
-			return
-		}
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}).Methods(http.MethodGet)
+	router.HandleFunc("/login", handleLogin)
+	router.HandleFunc("/logout", handleLogout)
+	api := router.PathPrefix("/api/").Subrouter()
+	api.Use(requireSessionMiddleware(apiUnauthorized))
+	api.Handle("/dashboard", apiDashboard).Methods(http.MethodGet)
+	api.HandleFunc("/catalog", handleCatalog)
+	api.HandleFunc("/repos", handleRepos)
+	api.HandleFunc("/tags", handleTags)
+	api.HandleFunc("/taginfo", handleTagInfo)
+	api.HandleFunc("/taglayers", handleTagLayers)
 
-		if r.Method == http.MethodGet && r.URL.Path == "/api/dashboard" {
-			serveDashboard(w, r)
-			return
-		}
-
-		if r.URL.Path == "/logout" {
-			handleLogout(w, r)
-			return
-		}
-
-		if r.URL.Path == "/api/catalog" {
-			handleCatalog(w, r)
-			return
-		}
-
-		if r.URL.Path == "/api/repos" {
-			handleRepos(w, r)
-			return
-		}
-
-		if r.URL.Path == "/api/tags" {
-			handleTags(w, r)
-			return
-		}
-
-		if r.URL.Path == "/api/taginfo" {
-			handleTagInfo(w, r)
-			return
-		}
-
-		if r.URL.Path == "/api/taglayers" {
-			handleTagLayers(w, r)
-			return
-		}
-
+	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := authenticate(w, r)
 		if !ok {
 			fmt.Println("not working with user", user)
@@ -114,12 +91,42 @@ func main() {
 	log.Println("listening on :8443")
 	server := &http.Server{
 		Addr:         ":8443",
-		Handler:      handler,
+		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 	log.Fatal(server.ListenAndServeTLS(certPath, keyPath))
+}
+
+func requireSession(next http.HandlerFunc, onFail http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := getSession(r); !ok {
+			if onFail != nil {
+				onFail(w, r)
+				return
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func requireSessionMiddleware(onFail http.HandlerFunc) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := getSession(r); !ok {
+				if onFail != nil {
+					onFail(w, r)
+					return
+				}
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func resolveStaticDir() string {

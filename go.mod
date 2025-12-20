@@ -6,6 +6,7 @@ toolchain go1.24.11
 
 require (
 	github.com/go-ldap/ldap/v3 v3.4.12
+	github.com/gorilla/mux v1.8.1
 	github.com/testcontainers/testcontainers-go v0.40.0
 )
 
