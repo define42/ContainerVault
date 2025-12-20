@@ -304,7 +304,12 @@ type HistoryEntry = {
           '<button class="details-toggle" type="button" aria-expanded="false">Details</button>' +
           "</div>" +
           '<div class="ref">' +
+          '<span class="ref-text">' +
           escapeHTML(base + "/" + repo + ":" + tag) +
+          "</span>" +
+          '<button class="copy-ref" type="button" data-copy-value="' +
+          escapeHTML(base + "/" + repo + ":" + tag) +
+          '">Copy</button>' +
           "</div>" +
           '<div data-layer-container="' +
           escapeHTML(repo + ":" + tag) +
@@ -712,8 +717,45 @@ type HistoryEntry = {
     }
   }
 
+  async function copyText(value: string): Promise<void> {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "true");
+    input.style.position = "absolute";
+    input.style.left = "-9999px";
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    document.body.removeChild(input);
+  }
+
   detailEl.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
+    const copyButton = target?.closest(".copy-ref") as HTMLButtonElement | null;
+    if (copyButton) {
+      const value = copyButton.getAttribute("data-copy-value") || "";
+      if (value) {
+        copyText(value)
+          .then(() => {
+            copyButton.textContent = "Copied";
+            window.setTimeout(() => {
+              copyButton.textContent = "Copy";
+            }, 1200);
+          })
+          .catch(() => {
+            copyButton.textContent = "Failed";
+            window.setTimeout(() => {
+              copyButton.textContent = "Copy";
+            }, 1200);
+          });
+      }
+      event.stopPropagation();
+      return;
+    }
     const row = target?.closest(".tagrow") as HTMLElement | null;
     if (!row) {
       return;

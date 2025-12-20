@@ -83,7 +83,10 @@ const dashboardHTML = `<!doctype html>
     .leaf { border:1px dashed rgba(148,163,184,0.35); background:rgba(15,23,42,0.6); padding:6px 10px; border-radius:10px; font-size:13px; color:#cbd5e1; }
     .tags { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
     .tag { padding:6px 10px; border-radius:999px; background:rgba(56,189,248,0.12); color:#bae6fd; font-size:12px; }
-    .ref { color:#cbd5e1; font-size:13px; margin-top:10px; word-break:break-all; }
+    .ref { color:#cbd5e1; font-size:13px; margin-top:10px; word-break:break-all; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .ref-text { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; }
+    .copy-ref { border:1px solid rgba(56,189,248,0.6); background:rgba(56,189,248,0.16); color:#bae6fd; padding:4px 10px; border-radius:999px; font-size:12px; cursor:pointer; }
+    .copy-ref:hover { border-color:rgba(56,189,248,0.9); background:rgba(56,189,248,0.28); color:#e0f2fe; }
     .detail { min-height:220px; }
     .taglist { display:grid; gap:10px; margin-top:12px; }
     .tagrow { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:rgba(15,23,42,0.6); cursor:pointer; }
