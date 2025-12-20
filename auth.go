@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+var ldapAuth = ldapAuthenticate
+
 func authenticate(w http.ResponseWriter, r *http.Request) (*User, bool) {
 	username, password, ok := r.BasicAuth()
 	if !ok || password == "" {
@@ -13,7 +15,7 @@ func authenticate(w http.ResponseWriter, r *http.Request) (*User, bool) {
 		return nil, false
 	}
 
-	u, err := ldapAuthenticate(username, password)
+	u, err := ldapAuth(username, password)
 	if err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return nil, false

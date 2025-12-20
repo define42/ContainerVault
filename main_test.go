@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,4 +83,69 @@ func TestCvRouterStaticSetsNoCache(t *testing.T) {
 	if rec.Header().Get("Cache-Control") == "" {
 		t.Fatalf("expected Cache-Control header to be set, got headers: %#v", rec.Header())
 	}
+}
+
+func TestCvRouterProxyForwards(t *testing.T) {
+	originalAuth := ldapAuth
+	ldapAuth = func(username, password string) (*User, error) {
+		return &User{Name: username, Namespace: "team1"}, nil
+	}
+	t.Cleanup(func() {
+		ldapAuth = originalAuth
+	})
+
+	originalUpstream := upstream
+	upstream = mustParse("http://registry.test")
+	t.Cleanup(func() {
+		upstream = originalUpstream
+	})
+
+	originalTransport := proxyTransport
+	t.Cleanup(func() {
+		proxyTransport = originalTransport
+	})
+
+	var gotPath, gotAuth, gotXFF, gotHost string
+	proxyTransport = roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotXFF = r.Header.Get("X-Forwarded-For")
+		gotHost = r.Host
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	router := cvRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v2/team1/app/manifests/latest", nil)
+	req.SetBasicAuth("alice", "secret")
+	req.RemoteAddr = "192.0.2.10:1234"
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if gotPath != "/v2/team1/app/manifests/latest" {
+		t.Fatalf("expected upstream path, got %q", gotPath)
+	}
+	if gotAuth != "" {
+		t.Fatalf("expected Authorization to be stripped, got %q", gotAuth)
+	}
+	if gotXFF == "" {
+		t.Fatalf("expected X-Forwarded-For to be set")
+	}
+	if gotHost != upstream.Host {
+		t.Fatalf("expected Host %q, got %q", upstream.Host, gotHost)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return fn(r)
 }

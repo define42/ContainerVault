@@ -14,12 +14,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var proxyTransport http.RoundTripper = http.DefaultTransport
+
 func cvRouter() *mux.Router {
 	_ = mime.AddExtensionType(".js", "application/javascript")
 	staticDir := resolveStaticDir()
 
 	// Use single-host reverse proxy to forward traffic to the registry
 	proxy := &httputil.ReverseProxy{
+		Transport: proxyTransport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(upstream)
 			pr.Out.Header.Del("Forwarded")
