@@ -198,6 +198,28 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	if !strings.Contains(loginResp.Header.Get("Set-Cookie"), "cv_session=") {
 		t.Fatalf("expected session cookie on login")
 	}
+
+	badForm := url.Values{}
+	badForm.Set("username", "hackers")
+	badForm.Set("password", "wrongpass")
+	badLoginReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/login", strings.NewReader(badForm.Encode()))
+	if err != nil {
+		t.Fatalf("new bad login request: %v", err)
+	}
+	badLoginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	badLoginResp, err := loginClient.Do(badLoginReq)
+	if err != nil {
+		t.Fatalf("do bad login request: %v", err)
+	}
+	defer badLoginResp.Body.Close()
+	if badLoginResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(badLoginResp.Body)
+		t.Fatalf("expected 200 for bad login page, got %d: %s", badLoginResp.StatusCode, string(body))
+	}
+	body, _ := io.ReadAll(badLoginResp.Body)
+	if !strings.Contains(string(body), "Invalid credentials.") {
+		t.Fatalf("expected invalid credentials message on login failure")
+	}
 }
 
 func startGlauth(ctx context.Context, t *testing.T, network string) (string, func()) {
