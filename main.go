@@ -70,7 +70,7 @@ func cvRouter() *mux.Router {
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := authenticate(w, r)
 		if !ok {
-			fmt.Println("not working with user", user)
+			// http.Error already sent
 			return
 		}
 
