@@ -45,6 +45,8 @@ func authorize(u *User, r *http.Request) bool {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
 			return true
+		case http.MethodDelete:
+			return u.DeleteAllowed
 		default:
 			return false
 		}

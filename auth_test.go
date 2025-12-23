@@ -39,6 +39,20 @@ func TestAuthorizePullOnly(t *testing.T) {
 	}
 }
 
+func TestAuthorizePullOnlyWithDelete(t *testing.T) {
+	user := &User{Namespace: "team1", PullOnly: true, DeleteAllowed: true}
+
+	req := httptest.NewRequest(http.MethodDelete, "/v2/team1/repo", nil)
+	if !authorize(user, req) {
+		t.Fatalf("expected DELETE to be allowed for pull-only delete")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v2/team1/repo", nil)
+	if authorize(user, req) {
+		t.Fatalf("expected POST to be denied for pull-only delete")
+	}
+}
+
 func TestAuthorizeDelete(t *testing.T) {
 	user := &User{Namespace: "team1", DeleteAllowed: false}
 	req := httptest.NewRequest(http.MethodDelete, "/v2/team1/repo", nil)

@@ -155,14 +155,17 @@ func groupNameFromDN(dn string) string {
 
 func permissionsFromGroup(group string) (namespace string, pullOnly bool, deleteAllowed bool, ok bool) {
 	switch {
-	case strings.HasSuffix(group, "_read_write_delete"):
-		ns := strings.TrimSuffix(group, "_read_write_delete")
+	case strings.HasSuffix(group, "_rwd"):
+		ns := strings.TrimSuffix(group, "_rwd")
 		return ns, false, true, true
-	case strings.HasSuffix(group, "_read_write"):
-		ns := strings.TrimSuffix(group, "_read_write")
+	case strings.HasSuffix(group, "_rw"):
+		ns := strings.TrimSuffix(group, "_rw")
 		return ns, false, false, true
-	case strings.HasSuffix(group, "_read_only"):
-		ns := strings.TrimSuffix(group, "_read_only")
+	case strings.HasSuffix(group, "_rd"):
+		ns := strings.TrimSuffix(group, "_rd")
+		return ns, true, true, true
+	case strings.HasSuffix(group, "_r"):
+		ns := strings.TrimSuffix(group, "_r")
 		return ns, true, false, true
 	default:
 		// Bare group name defaults to read/write without delete
