@@ -162,6 +162,18 @@ func TestHandleCatalogSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleCatalogNamespaceNotAllowed(t *testing.T) {
+	token := seedSession(t, "alice", []string{"team1"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/catalog?namespace=team2", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	sess := sessionFromRequest(t, req)
+	handleCatalog(rec, req, sess)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
 func TestHandleReposSuccess(t *testing.T) {
 	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/_catalog" {
