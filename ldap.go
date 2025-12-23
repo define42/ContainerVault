@@ -168,8 +168,7 @@ func permissionsFromGroup(group string) (namespace string, pullOnly bool, delete
 		ns := strings.TrimSuffix(group, "_r")
 		return ns, true, false, true
 	default:
-		// Bare group name defaults to read/write without delete
-		return group, false, false, true
+		return "", false, false, false
 	}
 }
 
