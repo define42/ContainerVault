@@ -7,6 +7,7 @@ type NamespacePermission = {
   namespace: string;
   pull_only: boolean;
   delete_allowed: boolean;
+  groups?: string[];
 };
 
 type PermissionKind = "r" | "rw" | "rd" | "rwd";
@@ -80,11 +81,15 @@ type HistoryEntry = {
   const namespaces = Array.isArray(bootstrap.namespaces) ? bootstrap.namespaces : [];
   const permissions = Array.isArray(bootstrap.permissions) ? bootstrap.permissions : [];
   const permissionByNamespace = new Map<string, PermissionKind>();
+  const groupsByNamespace = new Map<string, string[]>();
   permissions.forEach((perm) => {
     if (!perm || typeof perm.namespace !== "string") {
       return;
     }
     permissionByNamespace.set(perm.namespace, permissionKindFromFlags(perm));
+    if (Array.isArray(perm.groups) && perm.groups.length > 0) {
+      groupsByNamespace.set(perm.namespace, perm.groups);
+    }
   });
 
   const state: State = {
@@ -150,6 +155,21 @@ type HistoryEntry = {
     );
   }
 
+  function groupInfoBadge(namespace: string): string {
+    const groups = groupsByNamespace.get(namespace);
+    if (!groups || groups.length === 0) {
+      return "";
+    }
+    const tooltip = "LDAP groups:\n" + groups.join("\n");
+    return (
+      '<span class="group-info" title="' +
+      escapeHTML(tooltip) +
+      '" aria-label="' +
+      escapeHTML(tooltip) +
+      '">i</span>'
+    );
+  }
+
   function renderTree(): void {
     if (!namespaces || namespaces.length === 0) {
       treeEl.innerHTML = '<div class="mono">No namespaces assigned.</div>';
@@ -174,6 +194,7 @@ type HistoryEntry = {
           caret +
           "</span>" +
           permissionBadge(ns) +
+          groupInfoBadge(ns) +
           "<span>" +
           escapeHTML(ns) +
           "</span>" +

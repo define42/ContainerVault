@@ -6,6 +6,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -85,13 +86,30 @@ func renderDashboardHTML(sess sessionData) ([]byte, error) {
 }
 
 type namespacePermission struct {
-	Namespace     string `json:"namespace"`
-	PullOnly      bool   `json:"pull_only"`
-	DeleteAllowed bool   `json:"delete_allowed"`
+	Namespace     string   `json:"namespace"`
+	PullOnly      bool     `json:"pull_only"`
+	DeleteAllowed bool     `json:"delete_allowed"`
+	Groups        []string `json:"groups,omitempty"`
+}
+
+func hasPermissionSuffix(group string) bool {
+	switch {
+	case strings.HasSuffix(group, "_rwd"):
+		return true
+	case strings.HasSuffix(group, "_rw"):
+		return true
+	case strings.HasSuffix(group, "_rd"):
+		return true
+	case strings.HasSuffix(group, "_r"):
+		return true
+	default:
+		return false
+	}
 }
 
 func buildNamespacePermissions(namespaces []string, access []Access) []namespacePermission {
 	perms := make(map[string]*namespacePermission, len(namespaces))
+	groupSets := make(map[string]map[string]struct{}, len(namespaces))
 	seen := make(map[string]bool, len(namespaces))
 
 	for _, entry := range access {
@@ -113,6 +131,26 @@ func buildNamespacePermissions(namespaces []string, access []Access) []namespace
 		if entry.DeleteAllowed {
 			perm.DeleteAllowed = true
 		}
+		if entry.Group != "" && hasPermissionSuffix(entry.Group) {
+			set := groupSets[entry.Namespace]
+			if set == nil {
+				set = map[string]struct{}{}
+				groupSets[entry.Namespace] = set
+			}
+			set[entry.Group] = struct{}{}
+		}
+	}
+
+	for ns, perm := range perms {
+		set := groupSets[ns]
+		if len(set) == 0 {
+			continue
+		}
+		perm.Groups = make([]string, 0, len(set))
+		for group := range set {
+			perm.Groups = append(perm.Groups, group)
+		}
+		sort.Strings(perm.Groups)
 	}
 
 	result := make([]namespacePermission, 0, len(namespaces))

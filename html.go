@@ -77,6 +77,7 @@ const dashboardHTML = `<!doctype html>
     .perm-rw { background:rgba(56,189,248,0.18); color:#7dd3fc; border-color:rgba(56,189,248,0.45); }
     .perm-rd { background:rgba(248,113,113,0.18); color:#fca5a5; border-color:rgba(248,113,113,0.45); }
     .perm-rwd { background:rgba(74,222,128,0.18); color:#86efac; border-color:rgba(74,222,128,0.45); }
+    .group-info { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; border:1px solid rgba(148,163,184,0.45); color:#e2e8f0; font-size:11px; font-weight:700; background:rgba(148,163,184,0.12); cursor:help; }
     .node[data-type="folder"] { background:rgba(20,30,60,0.8); color:#e2e8f0; border-color:rgba(148,163,184,0.35); }
     .node[data-type="repo"] { background:rgba(15,23,42,0.8); color:#e2e8f0; }
     .node::before { content: ""; width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
