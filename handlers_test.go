@@ -332,6 +332,81 @@ func TestHandleTagLayersSuccess(t *testing.T) {
 	}
 }
 
+func TestBuildNamespacePermissions(t *testing.T) {
+	namespaces := []string{"team1", "team2", "team3", "team4"}
+	access := []Access{
+		{Group: "team1_rw", Namespace: "team1", PullOnly: false, DeleteAllowed: false},
+		{Group: "team1_rwd", Namespace: "team1", PullOnly: false, DeleteAllowed: true},
+		{Group: "team1", Namespace: "team1", PullOnly: false, DeleteAllowed: false},
+		{Group: "team2_r", Namespace: "team2", PullOnly: true, DeleteAllowed: false},
+		{Group: "team2_rd", Namespace: "team2", PullOnly: true, DeleteAllowed: true},
+		{Group: "team4_rw", Namespace: "team4", PullOnly: false, DeleteAllowed: false},
+		{Group: "team4", Namespace: "team4", PullOnly: false, DeleteAllowed: false},
+	}
+
+	expected := map[string]namespacePermission{
+		"team1": {
+			Namespace:     "team1",
+			PullOnly:      false,
+			DeleteAllowed: true,
+			Groups:        []string{"team1_rw", "team1_rwd"},
+		},
+		"team2": {
+			Namespace:     "team2",
+			PullOnly:      true,
+			DeleteAllowed: true,
+			Groups:        []string{"team2_r", "team2_rd"},
+		},
+		"team3": {
+			Namespace:     "team3",
+			PullOnly:      false,
+			DeleteAllowed: false,
+		},
+		"team4": {
+			Namespace:     "team4",
+			PullOnly:      false,
+			DeleteAllowed: false,
+			Groups:        []string{"team4_rw"},
+		},
+	}
+
+	got := buildNamespacePermissions(namespaces, access)
+	if len(got) != len(namespaces) {
+		t.Fatalf("expected %d permissions, got %d", len(namespaces), len(got))
+	}
+
+	equalStrings := func(a, b []string) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	for i, perm := range got {
+		if perm.Namespace != namespaces[i] {
+			t.Fatalf("expected namespace %q at index %d, got %q", namespaces[i], i, perm.Namespace)
+		}
+		exp, ok := expected[perm.Namespace]
+		if !ok {
+			t.Fatalf("unexpected namespace %q", perm.Namespace)
+		}
+		if perm.PullOnly != exp.PullOnly {
+			t.Fatalf("expected PullOnly %v for %q, got %v", exp.PullOnly, perm.Namespace, perm.PullOnly)
+		}
+		if perm.DeleteAllowed != exp.DeleteAllowed {
+			t.Fatalf("expected DeleteAllowed %v for %q, got %v", exp.DeleteAllowed, perm.Namespace, perm.DeleteAllowed)
+		}
+		if !equalStrings(perm.Groups, exp.Groups) {
+			t.Fatalf("expected groups %v for %q, got %v", exp.Groups, perm.Namespace, perm.Groups)
+		}
+	}
+}
+
 func seedSession(t *testing.T, userName string, namespaces []string) string {
 	t.Helper()
 	sessionMu.Lock()
