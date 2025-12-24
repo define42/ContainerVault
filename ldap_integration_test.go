@@ -45,6 +45,46 @@ func TestLDAPAuthenticateWithGlauthConfig(t *testing.T) {
 	}
 }
 
+func TestLDAPAuthenticateJohndoeSingleNamespace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	ldapURL, cleanup := startGlauth(ctx, t, "")
+	defer cleanup()
+
+	t.Setenv("LDAP_URL", ldapURL)
+	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
+	t.Setenv("LDAP_STARTTLS", "false")
+	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
+	prevCfg := ldapCfg
+	ldapCfg = loadLDAPConfig()
+	t.Cleanup(func() {
+		ldapCfg = prevCfg
+	})
+
+	u, access, err := ldapAuthenticateAccess("johndoe", "dogood")
+	if err != nil {
+		t.Fatalf("unexpected auth failure: %v", err)
+	}
+	if u == nil {
+		t.Fatalf("expected user, got nil")
+	}
+
+	namespaces := make(map[string]struct{}, len(access))
+	for _, entry := range access {
+		namespaces[entry.Namespace] = struct{}{}
+	}
+	if len(namespaces) != 1 {
+		t.Fatalf("expected 1 namespace, got %d: %+v", len(namespaces), access)
+	}
+	if _, ok := namespaces["team10"]; !ok {
+		t.Fatalf("expected namespace team10, got %+v", access)
+	}
+	if u.Namespace != "team10" || !u.PullOnly || u.DeleteAllowed {
+		t.Fatalf("unexpected permissions: %+v", u)
+	}
+}
+
 func TestProxyPushPullViaDocker(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
