@@ -23,9 +23,9 @@ services:
       - ./testldap/key.pem:/app/config/key.pem
       - ./testldap/cert.pem:/app/config/cert.pem
 
-  containervault:
+  container-vault:
     build: ./
-    container_name: containervault
+    container_name: container-vault
     restart: always
     ports:
       - "443:8443"

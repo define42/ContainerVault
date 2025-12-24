@@ -1,4 +1,4 @@
-module proxy
+module github.com/define42/container-vault
 
 go 1.24.0
 
