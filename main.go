@@ -97,22 +97,35 @@ func main() {
 
 	router := cvRouter()
 
+	listenAddr := ":8443"
+	tlsCfg, certmagicEnabled, err := certmagicTLSConfig()
+	if err != nil {
+		log.Fatalf("certmagic setup failed: %v", err)
+	}
+
 	certPath := "/certs/registry.crt"
 	keyPath := "/certs/registry.key"
 
-	if err := ensureTLSCert(certPath, keyPath); err != nil {
-		log.Fatalf("unable to ensure TLS certificate: %v", err)
-	}
-
-	log.Println("listening on :8443")
 	server := &http.Server{
-		Addr:              ":8443",
+		Addr:              listenAddr,
 		Handler:           router,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+
+	if certmagicEnabled {
+		server.TLSConfig = tlsCfg
+		log.Printf("listening on %s with certmagic", listenAddr)
+		log.Fatal(server.ListenAndServeTLS("", ""))
+	}
+
+	if err := ensureTLSCert(certPath, keyPath); err != nil {
+		log.Fatalf("unable to ensure TLS certificate: %v", err)
+	}
+
+	log.Printf("listening on %s", listenAddr)
 	log.Fatal(server.ListenAndServeTLS(certPath, keyPath))
 }
 

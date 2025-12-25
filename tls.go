@@ -3,14 +3,20 @@ package main
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/caddyserver/certmagic"
 )
 
 // ensureTLSCert creates a self-signed cert/key pair if either file is missing.
@@ -70,4 +76,114 @@ func generateSelfSigned(certPath, keyPath string) error {
 	}
 
 	return nil
+}
+
+type certmagicConfig struct {
+	Domains        []string
+	Email          string
+	CA             string
+	CARootPath     string
+	StoragePath    string
+	AltHTTPPort    int
+	AltTLSALPNPort int
+}
+
+func certmagicTLSConfig() (*tls.Config, bool, error) {
+	cfg, enabled, err := loadCertmagicConfig()
+	if err != nil || !enabled {
+		return nil, enabled, err
+	}
+
+	if cfg.Email != "" {
+		certmagic.DefaultACME.Email = cfg.Email
+	}
+	if cfg.CA != "" {
+		certmagic.DefaultACME.CA = cfg.CA
+	}
+	if cfg.AltHTTPPort != 0 {
+		certmagic.DefaultACME.AltHTTPPort = cfg.AltHTTPPort
+	}
+	if cfg.AltTLSALPNPort != 0 {
+		certmagic.DefaultACME.AltTLSALPNPort = cfg.AltTLSALPNPort
+	}
+	if cfg.CARootPath != "" {
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		pemBytes, err := os.ReadFile(cfg.CARootPath)
+		if err != nil {
+			return nil, true, err
+		}
+		if ok := roots.AppendCertsFromPEM(pemBytes); !ok {
+			return nil, true, fmt.Errorf("no certificates found in %s", cfg.CARootPath)
+		}
+		certmagic.DefaultACME.TrustedRoots = roots
+	}
+	if cfg.StoragePath != "" {
+		certmagic.Default.Storage = &certmagic.FileStorage{Path: cfg.StoragePath}
+	}
+
+	tlsCfg, err := certmagic.TLS(cfg.Domains)
+	if err != nil {
+		return nil, true, err
+	}
+	tlsCfg.NextProtos = append([]string{"h2", "http/1.1"}, tlsCfg.NextProtos...)
+	return tlsCfg, true, nil
+}
+
+func loadCertmagicConfig() (certmagicConfig, bool, error) {
+	domains := splitCommaList(os.Getenv("CERTMAGIC_DOMAINS"))
+	enabled := getEnvBool("CERTMAGIC_ENABLE", false)
+	if !enabled && len(domains) == 0 {
+		return certmagicConfig{}, false, nil
+	}
+	if len(domains) == 0 {
+		return certmagicConfig{}, false, fmt.Errorf("CERTMAGIC_DOMAINS must be set when certmagic is enabled")
+	}
+
+	cfg := certmagicConfig{
+		Domains:     domains,
+		Email:       strings.TrimSpace(os.Getenv("CERTMAGIC_EMAIL")),
+		CA:          strings.TrimSpace(os.Getenv("CERTMAGIC_CA")),
+		CARootPath:  strings.TrimSpace(os.Getenv("CERTMAGIC_CA_ROOT")),
+		StoragePath: strings.TrimSpace(os.Getenv("CERTMAGIC_STORAGE")),
+	}
+
+	var err error
+	cfg.AltHTTPPort, err = parseEnvPort("CERTMAGIC_HTTP_PORT")
+	if err != nil {
+		return certmagicConfig{}, false, err
+	}
+	cfg.AltTLSALPNPort, err = parseEnvPort("CERTMAGIC_TLS_ALPN_PORT")
+	if err != nil {
+		return certmagicConfig{}, false, err
+	}
+
+	return cfg, true, nil
+}
+
+func splitCommaList(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+func parseEnvPort(key string) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, nil
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("invalid %s: %q", key, raw)
+	}
+	return port, nil
 }

@@ -102,6 +102,18 @@ LDAP settings are loaded from environment variables:
 - `LDAP_STARTTLS` (default: `false`)
 - `LDAP_SKIP_TLS_VERIFY` (default: `true`)
 
+TLS with Certmagic (optional):
+- `CERTMAGIC_ENABLE` (default: `false`)
+- `CERTMAGIC_DOMAINS` (comma-separated, required when enabled)
+- `CERTMAGIC_EMAIL` (optional ACME account email)
+- `CERTMAGIC_CA` (custom ACME directory URL)
+- `CERTMAGIC_CA_ROOT` (path to a PEM CA root cert for the ACME server)
+- `CERTMAGIC_STORAGE` (path for cert storage; defaults to certmagic's standard location)
+- `CERTMAGIC_HTTP_PORT` (alternate HTTP-01 port if your ACME server supports it)
+- `CERTMAGIC_TLS_ALPN_PORT` (alternate TLS-ALPN port if your ACME server supports it)
+
+When Certmagic is enabled, ContainerVault uses ACME with TLS-ALPN challenge by default and serves with the managed certificate.
+
 The registry upstream URL is currently configured in `config.go` (default: `http://registry:5000`, matching `docker-compose.yml`).
 
 ## Test with glauth/glauth LdapServer
