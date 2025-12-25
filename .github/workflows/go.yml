@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     tags-ignore:
-      - "v*"          # prevent infinite loops
+      - "v*"          # prevent infinite loops when pushing tags
   pull_request:
     branches: [ "main" ]
 
@@ -13,20 +13,30 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
-      packages: write
+      contents: write   # required for tags + GitHub releases
+      packages: write   # required for GHCR push
 
     steps:
-      - uses: actions/checkout@v4
+      # -------------------------------
+      # Checkout
+      # -------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0   # REQUIRED for tag calculation
 
+      # -------------------------------
+      # Go setup
+      # -------------------------------
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
           cache-dependency-path: go.sum
 
+      # -------------------------------
+      # Build & test
+      # -------------------------------
       - name: Build
         run: make all
 
@@ -56,9 +66,8 @@ jobs:
           fail_ci_if_error: true
 
       # -------------------------------
-      # Auto-create Git tag (main only)
+      # Versioning & Release (main only)
       # -------------------------------
-
       - name: Bump version and create tag
         if: github.event_name == 'push'
         id: tag
@@ -66,17 +75,18 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release_branches: main
-      - name: Create a GitHub release
+
+      - name: Create GitHub release
+        if: github.event_name == 'push' && steps.tag.outputs.new_tag != ''
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.tag_version.outputs.new_tag }}
-          name: Release ${{ steps.tag_version.outputs.new_tag }}
-          body: ${{ steps.tag_version.outputs.changelog }}
+          tag: ${{ steps.tag.outputs.new_tag }}
+          name: Release ${{ steps.tag.outputs.new_tag }}
+          body: ${{ steps.tag.outputs.changelog }}
 
       # -------------------------------
-      # Container build & push
+      # Container build & push (GHCR)
       # -------------------------------
-
       - name: Set up Docker Buildx
         if: github.event_name == 'push'
         uses: docker/setup-buildx-action@v3
