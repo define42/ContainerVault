@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -111,6 +115,82 @@ func TestCertmagicTLSConfigCARootError(t *testing.T) {
 	}
 	if cfg != nil {
 		t.Fatalf("expected nil tls config")
+	}
+}
+
+func TestCertmagicTLSConfigAppliesCARootAndStorage(t *testing.T) {
+	restoreCertmagicDefaults(t)
+	certDir := t.TempDir()
+	certPath := filepath.Join(certDir, "root.pem")
+	keyPath := filepath.Join(certDir, "root.key")
+	if err := generateSelfSigned(certPath, keyPath); err != nil {
+		t.Fatalf("generate self-signed: %v", err)
+	}
+
+	storagePath := filepath.Join(t.TempDir(), "certmagic")
+
+	t.Setenv("CERTMAGIC_ENABLE", "true")
+	t.Setenv("CERTMAGIC_DOMAINS", "example.com")
+	t.Setenv("CERTMAGIC_CA_ROOT", certPath)
+	t.Setenv("CERTMAGIC_STORAGE", storagePath)
+
+	origTLS := certmagicTLS
+	certmagicTLS = func(domains []string) (*tls.Config, error) {
+		if len(domains) != 1 || domains[0] != "example.com" {
+			t.Fatalf("unexpected domains: %v", domains)
+		}
+		return &tls.Config{}, nil
+	}
+	t.Cleanup(func() {
+		certmagicTLS = origTLS
+	})
+
+	cfg, enabled, err := certmagicTLSConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !enabled {
+		t.Fatalf("expected certmagic enabled")
+	}
+	if cfg == nil {
+		t.Fatalf("expected tls config")
+	}
+
+	storage, ok := certmagic.Default.Storage.(*certmagic.FileStorage)
+	if !ok {
+		t.Fatalf("expected file storage, got %T", certmagic.Default.Storage)
+	}
+	if storage.Path != storagePath {
+		t.Fatalf("expected storage path %q, got %q", storagePath, storage.Path)
+	}
+
+	roots := certmagic.DefaultACME.TrustedRoots
+	if roots == nil {
+		t.Fatalf("expected trusted roots")
+	}
+
+	pemBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		t.Fatalf("read CA root: %v", err)
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		t.Fatalf("expected PEM block in %s", certPath)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse cert: %v", err)
+	}
+
+	found := false
+	for _, subject := range roots.Subjects() {
+		if bytes.Equal(subject, cert.RawSubject) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected CA root to be added to trusted pool")
 	}
 }
 

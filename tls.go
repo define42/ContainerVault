@@ -19,6 +19,8 @@ import (
 	"github.com/caddyserver/certmagic"
 )
 
+var certmagicTLS = certmagic.TLS
+
 // ensureTLSCert creates a self-signed cert/key pair if either file is missing.
 func ensureTLSCert(certPath, keyPath string) error {
 	if _, err := os.Stat(certPath); err == nil {
@@ -128,7 +130,7 @@ func certmagicTLSConfig() (*tls.Config, bool, error) {
 		certmagic.Default.Storage = &certmagic.FileStorage{Path: cfg.StoragePath}
 	}
 
-	tlsCfg, err := certmagic.TLS(cfg.Domains)
+	tlsCfg, err := certmagicTLS(cfg.Domains)
 	if err != nil {
 		return nil, true, err
 	}
