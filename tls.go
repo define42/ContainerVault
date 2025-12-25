@@ -100,6 +100,10 @@ func certmagicTLSConfig() (*tls.Config, bool, error) {
 	if cfg.CA != "" {
 		certmagic.DefaultACME.CA = cfg.CA
 	}
+	if cfg.AltTLSALPNPort == 0 {
+		// Align ACME TLS-ALPN with the internal listener (443 -> 8443 mapping).
+		cfg.AltTLSALPNPort = 8443
+	}
 	if cfg.AltHTTPPort != 0 {
 		certmagic.DefaultACME.AltHTTPPort = cfg.AltHTTPPort
 	}

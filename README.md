@@ -110,9 +110,9 @@ TLS with Certmagic (optional):
 - `CERTMAGIC_CA_ROOT` (path to a PEM CA root cert for the ACME server)
 - `CERTMAGIC_STORAGE` (path for cert storage; defaults to certmagic's standard location)
 - `CERTMAGIC_HTTP_PORT` (alternate HTTP-01 port if your ACME server supports it)
-- `CERTMAGIC_TLS_ALPN_PORT` (alternate TLS-ALPN port if your ACME server supports it)
+- `CERTMAGIC_TLS_ALPN_PORT` (alternate TLS-ALPN port; defaults to 8443 to match the internal listener)
 
-When Certmagic is enabled, ContainerVault uses ACME with TLS-ALPN challenge by default and serves with the managed certificate.
+When Certmagic is enabled, ContainerVault uses ACME with TLS-ALPN challenge by default and serves with the managed certificate. The service listens on 8443 internally, so map host 443 to container 8443 for ACME validation.
 
 The registry upstream URL is currently configured in `config.go` (default: `http://registry:5000`, matching `docker-compose.yml`).
 
